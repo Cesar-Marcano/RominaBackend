@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using RominaBackend.converters;
+using RominaBackend.Converters;
 
-namespace RominaBackend.types;
+namespace RominaBackend.Types;
 record ErrorResponse
 {
     [JsonPropertyName("message")]

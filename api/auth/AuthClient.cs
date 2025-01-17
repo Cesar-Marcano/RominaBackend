@@ -1,8 +1,8 @@
 using System.Text.Json;
 using RestSharp;
-using RominaBackend.types;
+using RominaBackend.Types;
 
-namespace RominaBackend.api.auth;
+namespace RominaBackend.API.Auth;
 
 public class AuthClient
 {

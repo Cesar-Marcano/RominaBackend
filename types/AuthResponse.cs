@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace RominaBackend.types;
+namespace RominaBackend.Types;
 
 record AuthResponse
 {
