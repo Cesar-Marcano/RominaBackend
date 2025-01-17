@@ -7,12 +7,12 @@ public record ProfileResponse
     [JsonPropertyName("username")]
     public string? Username { get; init; }
 
-    [JsonPropertyName("sub")]
+    [JsonPropertyName("id")]
     public string? UserId { get; init; }
 
-    [JsonPropertyName("iat")]
-    public long? TokenCreated { get; init; }
+    [JsonPropertyName("tokenIssuedAt")]
+    public long? TokenIssued { get; init; }
 
-    [JsonPropertyName("exp")]
-    public long? TokenExpires { get; init; }
+    [JsonPropertyName("tokenExpirationTime")]
+    public long? TokenExpiration { get; init; }
 }

@@ -16,17 +16,8 @@ public class AuthClient
         {
             if (_token != value)
             {
-                var existingHeader = _client.DefaultParameters
-                    .FirstOrDefault(p => p.Name == "Authorization" && p.Type == ParameterType.HttpHeader);
-
-                if (existingHeader != null)
-                {
-                    _client.DefaultParameters.RemoveParameter("Authorization", ParameterType.HttpHeader);
-                }
-
+                UpdateAuthorizationHeader(value);
                 _token = value;
-
-                _client.AddDefaultHeader("Authorization", $"Bearer {value}");
             }
         }
     }
@@ -37,115 +28,53 @@ public class AuthClient
         Token = token;
     }
 
-    public async Task<string> SignUp(string username, string password)
+    private void UpdateAuthorizationHeader(string? token)
     {
-        RestRequest request = new("auth/register", Method.Post);
-        request.AddJsonBody(new { username, password });
+        var existingHeader = _client.DefaultParameters
+            .FirstOrDefault(p => p.Name == "Authorization" && p.Type == ParameterType.HttpHeader);
 
-        RestResponse response = await _client.ExecuteAsync(request);
-
-        if (response.IsSuccessful)
+        if (existingHeader != null)
         {
-            if (string.IsNullOrEmpty(response.Content))
-            {
-                throw new Exception("Empty response content received.");
-            }
-
-            try
-            {
-                var responseData = JsonSerializer.Deserialize<AuthResponse>(response.Content);
-                if (responseData == null || string.IsNullOrEmpty(responseData.AccessToken))
-                {
-                    throw new Exception("The client didn't receive a valid token.");
-                }
-
-                Token = responseData.AccessToken;
-                return Token;
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the response.");
-            }
+            _client.DefaultParameters.RemoveParameter("Authorization", ParameterType.HttpHeader);
         }
-        else
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(response.Content))
-                {
-                    throw new Exception("Empty error content received.");
-                }
 
-                var err = JsonSerializer.Deserialize<ErrorResponse>(response.Content);
-                if (err != null)
-                {
-                    throw new Exception($"{err.Error}: {err.Message}");
-                }
-                else
-                {
-                    throw new Exception("Unknown error occurred.");
-                }
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the error response.");
-            }
+        if (!string.IsNullOrEmpty(token))
+        {
+            _client.AddDefaultHeader("Authorization", $"Bearer {token}");
         }
     }
 
-    public async Task<string> SignIn(string username, string password)
+    public async Task<string> SignUp(string username, string password) =>
+        await HandleAuthRequest("auth/register", username, password);
+
+    public async Task<string> SignIn(string username, string password) =>
+        await HandleAuthRequest("auth/login", username, password);
+
+    private async Task<string> HandleAuthRequest(string endpoint, string username, string password)
     {
-        RestRequest request = new("auth/login", Method.Post);
+        RestRequest request = new(endpoint, Method.Post);
         request.AddJsonBody(new { username, password });
 
         RestResponse response = await _client.ExecuteAsync(request);
+        return ProcessAuthResponse(response);
+    }
 
+    private string ProcessAuthResponse(RestResponse response)
+    {
         if (response.IsSuccessful)
         {
-            if (string.IsNullOrEmpty(response.Content))
+            var token = DeserializeResponse<AuthResponse>(response.Content)?.AccessToken;
+            if (string.IsNullOrEmpty(token))
             {
-                throw new Exception("Empty response content received.");
+                throw new Exception("Invalid token received.");
             }
 
-            try
-            {
-                var responseData = JsonSerializer.Deserialize<AuthResponse>(response.Content);
-                if (responseData == null || string.IsNullOrEmpty(responseData.AccessToken))
-                {
-                    throw new Exception("The client didn't receive a valid token.");
-                }
-
-                Token = responseData.AccessToken;
-                return Token;
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the response.");
-            }
+            Token = token;
+            return Token;
         }
         else
         {
-            try
-            {
-                if (string.IsNullOrEmpty(response.Content))
-                {
-                    throw new Exception("Empty error content received.");
-                }
-
-                var err = JsonSerializer.Deserialize<ErrorResponse>(response.Content);
-                if (err != null)
-                {
-                    throw new Exception($"{err.Error}: {err.Message}");
-                }
-                else
-                {
-                    throw new Exception("Unknown error occurred.");
-                }
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the error response.");
-            }
+            throw HandleErrorResponse(response);
         }
     }
 
@@ -157,56 +86,53 @@ public class AuthClient
         }
 
         RestRequest request = new("auth/profile", Method.Get);
-
         RestResponse response = await _client.ExecuteAsync(request);
 
         if (response.IsSuccessful)
         {
-            if (string.IsNullOrEmpty(response.Content))
-            {
-                throw new Exception("Empty response content received.");
-            }
-
-            try
-            {
-                var responseData = JsonSerializer.Deserialize<ProfileResponse>(response.Content);
-
-                if (responseData == null)
-                {
-                    throw new Exception("Failed to deserialize profile data.");
-                }
-
-                return responseData;
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the response.");
-            }
+            return DeserializeResponse<ProfileResponse>(response.Content)
+                ?? throw new Exception("Failed to deserialize profile data.");
         }
         else
         {
-            try
-            {
-                if (string.IsNullOrEmpty(response.Content))
-                {
-                    throw new Exception("Empty error content received.");
-                }
-
-                var err = JsonSerializer.Deserialize<ErrorResponse>(response.Content);
-                if (err != null)
-                {
-                    throw new Exception($"{err.Error}: {err.Message}");
-                }
-                else
-                {
-                    throw new Exception("Unknown error occurred.");
-                }
-            }
-            catch (JsonException)
-            {
-                throw new Exception("Error while deserializing the error response.");
-            }
+            throw HandleErrorResponse(response);
         }
     }
 
+    private static T? DeserializeResponse<T>(string? content)
+    {
+        if (string.IsNullOrEmpty(content))
+        {
+            throw new Exception("Empty response content received.");
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(content);
+        }
+        catch (JsonException)
+        {
+            throw new Exception($"Error while deserializing the response to {typeof(T).Name}.");
+        }
+    }
+
+    private static Exception HandleErrorResponse(RestResponse response)
+    {
+        if (string.IsNullOrEmpty(response.Content))
+        {
+            return new Exception("Empty error content received.");
+        }
+
+        try
+        {
+            var err = JsonSerializer.Deserialize<ErrorResponse>(response.Content);
+            return err != null
+                ? new Exception($"{err.Error}: {err.Message}")
+                : new Exception("Unknown error occurred.");
+        }
+        catch (JsonException)
+        {
+            return new Exception("Error while deserializing the error response.");
+        }
+    }
 }
